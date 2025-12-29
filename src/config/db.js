@@ -1,3 +1,5 @@
+// For Local Postgres Development.
+
 // const { Pool } = require("pg");
 // require("dotenv").config();
 
@@ -16,6 +18,7 @@
 
 // module.exports = pool;
 
+// For Supabase Postgres Development.
 const { Pool } = require("pg");
 require("dotenv").config();
 
@@ -30,6 +33,7 @@ const pool = new Pool({
   },
 });
 
+//// Alternative.
 // const pool = new Pool({
 //   connectionString: process.env.DATABASE_URL,
 //   ssl: {
