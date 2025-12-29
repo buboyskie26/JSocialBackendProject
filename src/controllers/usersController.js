@@ -115,15 +115,15 @@ exports.userProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
     const result = await usersModel.checkExistingUserById(userId);
-    // res.json({ user: result.rows[0] });
-    res.json({
-      user: {
-        id: 999,
-        username: "test",
-        email: "test1",
-        display_name: "test",
-      },
-    });
+    res.json({ user: result.rows[0] });
+    // res.json({
+    //   user: {
+    //     id: 999,
+    //     username: "test",
+    //     email: "test1",
+    //     display_name: "test",
+    //   },
+    // });
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Server error" });
