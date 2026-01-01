@@ -81,7 +81,7 @@ exports.loginUser = async (req, res) => {
       httpOnly: true, // prevents JS access
       secure: process.env.NODE_ENV === "production", // only use HTTPS in production
       sameSite: "strict", // prevents CSRF
-      maxAge: 10 * 24 * 60 * 60 * 1000, // 10 days
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     //
@@ -115,7 +115,16 @@ exports.userProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
     const result = await usersModel.checkExistingUserById(userId);
-    res.json({ user: result.rows[0] });
+    //
+    //
+    const recentChatUser = await usersModel.getUserRecentlyChatted(userId);
+
+    res.json({
+      user: result.rows[0],
+      // recentChatUser: recentChatUser.rows[0] || null,
+    });
+    //
+    //
     // res.json({
     //   user: {
     //     id: 999,

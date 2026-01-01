@@ -22,6 +22,7 @@ app.use(cookieParser()); // Otherwise, req.cookies will be undefined.
 const allowedOrigins = [
   "https://jsocial-frontend-vercel.vercel.app",
   "http://localhost:5173",
+  "http://localhost:4173",
 ];
 
 app.use(

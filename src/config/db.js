@@ -18,7 +18,8 @@
 
 // module.exports = pool;
 
-// For Supabase Postgres Development.
+// ## For Supabase Postgres Development.
+
 const { Pool } = require("pg");
 require("dotenv").config();
 
@@ -33,13 +34,13 @@ const pool = new Pool({
   },
 });
 
-//// Alternative.
-// const pool = new Pool({
-//   connectionString: process.env.DATABASE_URL,
-//   ssl: {
-//     rejectUnauthorized: false,
-//   },
-// });
+// Alternative.
+//// const pool = new Pool({
+////   connectionString: process.env.DATABASE_URL,
+////   ssl: {
+////     rejectUnauthorized: false,
+////   },
+//// });
 
 pool
   .connect()
@@ -47,3 +48,5 @@ pool
   .catch((err) => console.error("❌ DB Connection Error:", err));
 
 module.exports = pool;
+
+// ##

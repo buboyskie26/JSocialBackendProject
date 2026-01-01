@@ -41,18 +41,33 @@ exports.checkExistingUserByEmail = async (email) => {
 exports.checkExistingUserById = async (id) => {
   //
   const result = await pool.query(
-    "SELECT id, username, email, display_name FROM users WHERE id = $1",
+    `SELECT t1.id, t1.username, t1.email, t1.display_name,
+      t2.id AS message_id,
+      t2.content AS message_content,
+      t2.created_at AS message_created_at,
+      t2.conversation_id AS message_conversation_id,
+      t2.message_type AS message_message_type
+
+      FROM users as t1
+      
+      LEFT JOIN (
+        SELECT id, content, created_at, sender_id,conversation_id,message_type
+        FROM messages
+        WHERE sender_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) t2 ON t2.sender_id = t1.id
+      WHERE t1.id = $1`,
     [id]
   );
   return result;
 };
 
-exports.getAllUsers = async (searchQuery) => {
+exports.getUserRecentlyChatted = async (userId) => {
+  const query =
+    "SELECT t1.id, t1.created_at, t1.content FROM messages t1 WHERE t1.sender_id = $1 ORDER BY created_at DESC LIMIT 1";
   //
-  const result = await pool.query(
-    "SELECT id, username, email, display_name FROM users WHERE display_name = $1",
-    [searchQuery]
-  );
+  const result = await pool.query(query, [userId]);
   return result;
 };
 
