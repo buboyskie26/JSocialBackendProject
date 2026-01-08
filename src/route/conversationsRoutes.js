@@ -10,6 +10,22 @@ router.get(
 );
 
 router.get(
+  "/:conversationId/messages",
+  verifiedUser,
+  conversationsController.getConversationMessages
+);
+
+/**
+ * Search messages and get messages around a specific message
+ * GET /api/conversations/:conversationId/messages/:messageId/around?before=15&after=15
+ */
+router.get(
+  "/:conversationId/messages/:messageId/around",
+  verifiedUser,
+  conversationsController.getMessagesAroundTarget
+);
+
+router.get(
   "/checkRecentSearchHasConvo/:otherUserId",
   verifiedUser,
   conversationsController.checkRecentSearchHasConvo

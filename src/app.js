@@ -4,7 +4,7 @@ const app = express();
 const cookieParser = require("cookie-parser");
 //
 const usersRoute = require("./route/usersRoutes");
-const conversationsRoute = require("./route/coversationsRoutes");
+const conversationsRoute = require("./route/conversationsRoutes");
 const messagesRoute = require("./route/messagesRoutes");
 const recentSearchesRoute = require("./route/recentSearchesRoutes");
 
@@ -29,7 +29,7 @@ app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );

@@ -89,10 +89,7 @@ exports.deleteMessage = async (messageId, senderId) => {
 };
 
 // Individual.
-exports.getConversationMessagesWithUser = async (
-  conversationId,
-  loggedInUserId
-) => {
+exports.getConversationMessagesWithUser = async (conversationId) => {
   const query = `
     SELECT 
       m.id AS id,
@@ -122,6 +119,7 @@ exports.getConversationMessagesWithUser = async (
     WHERE c.id = $1
       AND c.type = 'individual'
       AND m.deleted = false
+
     ORDER BY m.created_at ASC;
   `;
 
@@ -410,5 +408,357 @@ exports.sendMessageNoConvoQuery = async (
     throw error;
   } finally {
     client.release(); // Release the client back to the pool
+  }
+};
+
+//
+exports.getRecentMessages = async (conversationId, limit = 15) => {
+  //
+  const query = `
+    WITH recent_messages AS (
+      SELECT 
+
+        m.id,
+        m.reply_to_message_id,
+        m.content,
+        m.message_type,
+        m.created_at,
+        m.updated_at,
+        m.deleted,
+        m.sender_id,
+
+        u.username AS sender_username,
+        u.display_name AS sender_display_name,
+        u.profile_image_url AS sender_profile_image,
+
+        rm.content AS reply_message_content,
+        rm.sender_id AS reply_message_sender_id
+
+      FROM messages m
+
+      JOIN users u ON m.sender_id = u.id
+
+      JOIN conversations c ON m.conversation_id = c.id
+
+      LEFT JOIN messages rm ON rm.id = m.reply_to_message_id
+
+      WHERE c.id = $1
+        AND c.type = 'individual'
+        AND m.deleted = false
+
+      ORDER BY m.created_at DESC
+
+      LIMIT $2
+    )
+
+    SELECT * FROM recent_messages
+
+    ORDER BY created_at ASC;
+  `;
+
+  try {
+    const { rows } = await pool.query(query, [conversationId, limit]);
+
+    // Check if there are more older messages
+    const countQuery = `
+      SELECT COUNT(*) 
+      FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      WHERE c.id = $1 AND m.deleted = false
+    `;
+    const countResult = await pool.query(countQuery, [conversationId]);
+    const totalCount = parseInt(countResult.rows[0].count);
+
+    return {
+      messages: rows,
+      hasMore: totalCount > rows.length,
+    };
+  } catch (error) {
+    console.error("Error fetching recent messages:", error);
+    throw error;
+  }
+};
+
+//
+/**
+ * Get messages AFTER a specific message (for scrolling DOWN in search mode)
+ */
+exports.getMessagesAfter = async (
+  conversationId,
+  afterMessageId,
+  limit = 10
+) => {
+  //
+  const query = `
+    SELECT 
+      m.id,
+      m.reply_to_message_id,
+      m.content,
+      m.message_type,
+      m.created_at,
+      m.updated_at,
+      m.deleted,
+      m.sender_id,
+
+      u.username AS sender_username,
+      u.display_name AS sender_display_name,
+      u.profile_image_url AS sender_profile_image,
+
+      rm.content AS reply_message_content,
+      rm.sender_id AS reply_message_sender_id
+      
+    FROM messages m
+    JOIN users u ON m.sender_id = u.id
+
+    JOIN conversations c ON m.conversation_id = c.id
+
+    LEFT JOIN messages rm ON rm.id = m.reply_to_message_id
+
+    WHERE c.id = $1
+      AND c.type = 'individual'
+      AND m.deleted = false
+      AND m.created_at > (
+        SELECT created_at FROM messages WHERE id = $2
+      )
+
+    ORDER BY m.created_at ASC
+
+    LIMIT $3;
+  `;
+
+  try {
+    //
+    const { rows } = await pool.query(query, [
+      conversationId,
+      afterMessageId,
+      limit,
+    ]);
+
+    // Check if there are more newer messages
+    // Query that returns a boolean.
+    const hasMoreQuery = `
+      SELECT EXISTS (
+        SELECT 1 
+        FROM messages m
+        WHERE m.conversation_id = $1 
+          AND m.deleted = false
+          AND m.created_at > (
+            SELECT created_at FROM messages WHERE id = $2
+          )
+        LIMIT 1 OFFSET $3
+      ) AS has_more;
+    `;
+    const hasMoreResult = await pool.query(hasMoreQuery, [
+      conversationId,
+      afterMessageId,
+      limit,
+    ]);
+
+    return {
+      messages: rows,
+      hasMore: hasMoreResult.rows[0].has_more,
+    };
+  } catch (error) {
+    console.error("Error fetching messages after:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get messages BEFORE a specific message (for scrolling UP)
+ */
+exports.getMessagesBefore = async (
+  conversationId,
+  beforeMessageId,
+  limit = 5
+) => {
+  const query = `
+    WITH target_timestamp AS (
+      SELECT created_at 
+      FROM messages 
+      WHERE id = $2
+    ),
+    older_messages AS (
+      SELECT
+
+        m.id,
+        m.reply_to_message_id,
+        m.content,
+        m.message_type,
+        m.created_at,
+        m.updated_at,
+        m.deleted,
+        m.sender_id,
+
+        u.username AS sender_username,
+        u.display_name AS sender_display_name,
+        u.profile_image_url AS sender_profile_image,
+
+        rm.content AS reply_message_content,
+        rm.sender_id AS reply_message_sender_id
+
+      FROM messages m
+
+      JOIN users u ON m.sender_id = u.id
+
+      JOIN conversations c ON m.conversation_id = c.id
+
+      LEFT JOIN messages rm ON rm.id = m.reply_to_message_id
+
+      WHERE c.id = $1
+        AND c.type = 'individual'
+        AND m.deleted = false
+        AND m.created_at < (SELECT created_at FROM target_timestamp)
+
+      ORDER BY m.created_at DESC
+
+      LIMIT $3
+    )
+
+    SELECT * FROM older_messages
+
+    WHERE deleted = false
+    ORDER BY created_at ASC;
+  `;
+
+  try {
+    const { rows } = await pool.query(query, [
+      conversationId,
+      beforeMessageId,
+      limit,
+    ]);
+
+    // Check if there are even more older messages
+    const hasMoreQuery = `
+      SELECT EXISTS (
+        SELECT 1 
+        FROM messages m
+        WHERE m.conversation_id = $1 
+          AND m.deleted = false
+          AND m.created_at < (
+            SELECT created_at FROM messages WHERE id = $2
+          )
+        LIMIT 1 OFFSET $3
+      ) AS has_more;
+    `;
+    const hasMoreResult = await pool.query(hasMoreQuery, [
+      conversationId,
+      beforeMessageId,
+      limit,
+    ]);
+
+    return {
+      messages: rows,
+      hasMore: hasMoreResult.rows[0].has_more,
+    };
+  } catch (error) {
+    console.error("Error fetching messages before:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get messages around a specific message (for search results)
+ */
+exports.getMessagesAround = async (
+  conversationId,
+  messageId,
+  beforeCount = 15,
+  afterCount = 15
+) => {
+  const query = `
+    WITH target_message AS (
+      SELECT id, created_at 
+      FROM messages 
+      WHERE id = $2 AND conversation_id = $1 AND deleted = false
+    ),
+    messages_before AS (
+      SELECT m.*
+      FROM messages m
+      WHERE m.conversation_id = $1
+        AND m.deleted = false
+        AND m.created_at < (SELECT created_at FROM target_message)
+      ORDER BY m.created_at DESC
+      LIMIT $3
+    ),
+    messages_after AS (
+      SELECT m.*
+      FROM messages m
+      WHERE m.conversation_id = $1
+        AND m.deleted = false
+        AND m.created_at >= (SELECT created_at FROM target_message)
+      ORDER BY m.created_at ASC
+      LIMIT $4
+    ),
+    combined_messages AS (
+      SELECT * FROM messages_before
+      UNION ALL
+      SELECT * FROM messages_after
+    )
+    SELECT 
+      m.id,
+      m.reply_to_message_id,
+      m.content,
+      m.message_type,
+      m.created_at,
+      m.updated_at,
+      m.deleted,
+      m.sender_id,
+      u.username AS sender_username,
+      u.display_name AS sender_display_name,
+      u.profile_image_url AS sender_profile_image,
+      rm.content AS reply_message_content,
+      rm.sender_id AS reply_message_sender_id
+    FROM combined_messages m
+    JOIN users u ON m.sender_id = u.id
+    LEFT JOIN messages rm ON rm.id = m.reply_to_message_id
+    ORDER BY m.created_at ASC;
+  `;
+
+  try {
+    const { rows } = await pool.query(query, [
+      conversationId,
+      messageId,
+      beforeCount,
+      afterCount + 1,
+    ]);
+
+    const targetMessage = rows.find((m) => m.id === parseInt(messageId));
+
+    // Check for more messages
+    const hasMoreBeforeQuery = `
+      SELECT EXISTS (
+        SELECT 1 FROM messages
+        WHERE conversation_id = $1 
+          AND deleted = false
+          AND created_at < (SELECT created_at FROM messages WHERE id = $2)
+        LIMIT 1 OFFSET $3
+      ) AS has_more;
+    `;
+
+    const hasMoreAfterQuery = `
+      SELECT EXISTS (
+        SELECT 1 FROM messages
+        WHERE conversation_id = $1 
+          AND deleted = false
+          AND created_at > (SELECT created_at FROM messages WHERE id = $2)
+        LIMIT 1 OFFSET $3
+      ) AS has_more;
+    `;
+
+    const [hasMoreBeforeResult, hasMoreAfterResult] = await Promise.all([
+      pool.query(hasMoreBeforeQuery, [conversationId, messageId, beforeCount]),
+      pool.query(hasMoreAfterQuery, [conversationId, messageId, afterCount]),
+    ]);
+
+    return {
+      messages: rows,
+      targetMessage: targetMessage,
+      hasMoreBefore: hasMoreBeforeResult.rows[0].has_more,
+      hasMoreAfter: hasMoreAfterResult.rows[0].has_more,
+    };
+  } catch (error) {
+    console.error("Error fetching messages around target:", error);
+    throw error;
   }
 };

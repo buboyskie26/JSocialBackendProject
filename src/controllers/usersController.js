@@ -23,25 +23,39 @@ exports.registerUser = async (req, res) => {
     const password_hash = await bcrypt.hash(password, salt);
 
     //
-    const data = await usersModel.insertUserAccount(
+    const newUser = await usersModel.insertUserAccount(
       username,
       email,
       password_hash,
       display_name
     );
-    res.status(201).json({
-      data: { id: data.id, username: data.username, email: data.email },
+
+    // Create JWT Token (same as login)
+    const token = jwt.sign({ userId: newUser.id }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
     });
 
-    //  user: {
-    //     id: user.rows[0].id,
-    //     username: user.rows[0].username,
-    //     email: user.rows[0].email,
-    //   },
-    //
+    // Set cookie (same as login)
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    // Return success response with token and user data
+    res.status(201).json({
+      message: "Registration successful!",
+      token,
+      user: {
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+      },
+    });
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Error creating record" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 

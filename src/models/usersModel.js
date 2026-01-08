@@ -46,7 +46,12 @@ exports.checkExistingUserById = async (id) => {
       t2.content AS message_content,
       t2.created_at AS message_created_at,
       t2.conversation_id AS message_conversation_id,
-      t2.message_type AS message_message_type
+      t2.message_type AS message_message_type,
+
+      t3.id AS other_user_id,
+      t3.username AS other_user_username,
+      t3.email AS other_user_email,
+      t3.display_name AS other_user_display_name
 
       FROM users as t1
       
@@ -57,6 +62,19 @@ exports.checkExistingUserById = async (id) => {
         ORDER BY created_at DESC
         LIMIT 1
       ) t2 ON t2.sender_id = t1.id
+
+      LEFT JOIN LATERAL (
+        SELECT u.id, u.username, u.email, u.display_name
+        
+        FROM conversation_members cm
+
+        INNER JOIN users u ON u.id = cm.user_id
+
+        WHERE cm.conversation_id = t2.conversation_id
+          AND cm.user_id != $1
+        
+        LIMIT 1
+      ) t3 ON true
       WHERE t1.id = $1`,
     [id]
   );

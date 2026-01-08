@@ -11,12 +11,12 @@ exports.getConversationMessageById = async (req, res) => {
     const { conversationId } = req.params;
 
     const loggedInUserId = req.user.userId;
-    // console.log({ conversationId, loggedInUserId });
 
     const convoMessages = await messagesModel.getConversationMessagesWithUser(
       conversationId
       // loggedInUserId
     );
+    //
     if (convoMessages) {
       return res.status(200).json({
         data: convoMessages,
@@ -28,11 +28,103 @@ exports.getConversationMessageById = async (req, res) => {
     }
     //
   } catch (error) {
-    console.error("Error deleting message:", error);
+    console.error("Error getting conversation messages:", error);
     res.status(500).json({ message: "Server error." });
   }
 };
-// Check if it has a conversation before.
+
+exports.getConversationMessages = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const loggedInUserId = req.user.userId;
+
+    // Parse query parameters
+    const limit = parseInt(req.query.limit) || 15;
+    const before = req.query.before; // message_id (for loading older messages)
+    const after = req.query.after; // message_id (for loading newer messages)
+
+    // Validate limit (prevent abuse)
+    if (limit > 100) {
+      return res.status(400).json({
+        message: "Limit cannot exceed 100 messages",
+      });
+    }
+
+    let result;
+
+    if (before) {
+      // Load messages BEFORE a specific message (scrolling UP)
+      result = await messagesModel.getMessagesBefore(
+        conversationId,
+        before,
+        limit
+      );
+    } else if (after) {
+      // Load messages AFTER a specific message (scrolling DOWN in search)
+      result = await messagesModel.getMessagesAfter(
+        conversationId,
+        after,
+        limit
+      );
+    } else {
+      // Initial behavior as the user click the conversation
+      // Load most recent messages (initial load messages)
+      result = await messagesModel.getRecentMessages(conversationId, limit);
+    }
+
+    return res.status(200).json({
+      data: result.messages,
+      pagination: {
+        hasMore: result.hasMore,
+        count: result.messages.length,
+        limit: limit,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting conversation messages:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
+//
+
+/**
+ * Search messages and get messages around a specific message
+ * GET /api/conversations/:conversationId/messages/:messageId/around?before=15&after=15
+ */
+exports.getMessagesAroundTarget = async (req, res) => {
+  try {
+    const { conversationId, messageId } = req.params;
+    const beforeCount = parseInt(req.query.before) || 15;
+    const afterCount = parseInt(req.query.after) || 15;
+
+    const result = await messagesModel.getMessagesAround(
+      conversationId,
+      messageId,
+      beforeCount,
+      afterCount
+    );
+
+    if (!result.targetMessage) {
+      return res.status(404).json({
+        message: "Message not found",
+      });
+    }
+
+    return res.status(200).json({
+      data: result.messages,
+      targetMessage: result.targetMessage,
+      pagination: {
+        hasMoreBefore: result.hasMoreBefore,
+        hasMoreAfter: result.hasMoreAfter,
+        count: result.messages.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting messages around target:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
 
 //
 exports.deleteMessage = async (req, res) => {
@@ -212,7 +304,6 @@ exports.checkRecentSearchHasConvo = async (req, res) => {
 
     // Validate otherUserId
     if (!otherUserId || otherUserId === loggedInUserId) {
-      
       return res.status(400).json({
         error: "Invalid user ID",
       });
