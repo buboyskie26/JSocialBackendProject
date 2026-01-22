@@ -13,7 +13,7 @@ exports.getConversationMessageById = async (req, res) => {
     const loggedInUserId = req.user.userId;
 
     const convoMessages = await messagesModel.getConversationMessagesWithUser(
-      conversationId
+      conversationId,
       // loggedInUserId
     );
     //
@@ -57,14 +57,14 @@ exports.getConversationMessages = async (req, res) => {
       result = await messagesModel.getMessagesBefore(
         conversationId,
         before,
-        limit
+        limit,
       );
     } else if (after) {
       // Load messages AFTER a specific message (scrolling DOWN in search)
       result = await messagesModel.getMessagesAfter(
         conversationId,
         after,
-        limit
+        limit,
       );
     } else {
       // Initial behavior as the user click the conversation
@@ -102,7 +102,7 @@ exports.getMessagesAroundTarget = async (req, res) => {
       conversationId,
       messageId,
       beforeCount,
-      afterCount
+      afterCount,
     );
 
     if (!result.targetMessage) {
@@ -135,7 +135,7 @@ exports.deleteMessage = async (req, res) => {
     // 🧩 Ensure message exists and belongs to the user
     const deletedMessage = await messagesModel.deleteMessage(
       messageId,
-      loggedInUserId
+      loggedInUserId,
     );
 
     if (!deletedMessage) {
@@ -167,7 +167,7 @@ exports.updateConversation = async (req, res) => {
     //
     const checkOwnConvo = await messagesModel.checkMessageConversation(
       messageId,
-      loggedInUserId
+      loggedInUserId,
     );
     console.log({ checkOwnConvo });
     if (!checkOwnConvo) {
@@ -179,22 +179,22 @@ exports.updateConversation = async (req, res) => {
     // ✅ 2. Proceed with update
     const updatedMessage = await messagesModel.updateMessage(
       messageId,
-      messageContent
+      messageContent,
     );
 
+    //
+
+    const receivedId = "";
     if (!updatedMessage) {
       return res.status(404).json({ message: "Message not found." });
     }
+
 
     // ✅ 3. Success response
     res.status(200).json({
       message: "Message updated successfully.",
       data: updatedMessage,
     });
-    if (checkOwnConvo !== null) {
-      // Update Message.
-    }
-    //
     //
   } catch (error) {
     console.log(error);
@@ -214,7 +214,7 @@ exports.addConversation = async (req, res) => {
     const hasConversation =
       await conversationsModel.checkExistingConversationIndividual(
         loggedInUserId,
-        chatUserId
+        chatUserId,
       );
     console.log({ hasConversation });
     // return res.status(200).json({ data: hasConversation });
@@ -225,7 +225,7 @@ exports.addConversation = async (req, res) => {
       const insertConversation = await conversationsModel.InsertConversation(
         "individual",
         null,
-        loggedInUserId
+        loggedInUserId,
       );
       console.log({ insertConversation });
       if (insertConversation?.id) {
@@ -237,14 +237,14 @@ exports.addConversation = async (req, res) => {
           await conversationsModel.InsertConversationMembers(
             convoId,
             loggedInUserId,
-            "member"
+            "member",
           );
 
         const addConvoChatUserId =
           await conversationsModel.InsertConversationMembers(
             convoId,
             chatUserId,
-            "member"
+            "member",
           );
 
         // if (insertConversationMember?.length > 0) {
@@ -255,7 +255,7 @@ exports.addConversation = async (req, res) => {
           convoId,
           loggedInUserId,
           messageContent,
-          replyToMessageId
+          replyToMessageId,
         );
 
         if (addMessage?.id) {
@@ -279,7 +279,7 @@ exports.addConversation = async (req, res) => {
         getConversationId,
         loggedInUserId,
         messageContent,
-        replyToMessageId || null
+        replyToMessageId || null,
       );
 
       if (addMessage?.id) {
@@ -311,7 +311,7 @@ exports.checkRecentSearchHasConvo = async (req, res) => {
 
     const conversation = await conversationsModel.checkRecentSearchHasConvo(
       otherUserId,
-      loggedInUserId
+      loggedInUserId,
     );
 
     return res.status(200).json({

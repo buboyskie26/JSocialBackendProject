@@ -5,7 +5,7 @@ exports.InsertMessageIndividual = async (
   conversation_id,
   sender_id,
   content,
-  replyToMessageId = null
+  replyToMessageId = null,
 ) => {
   // const query =
   //   "INSERT INTO messages (conversation_id, sender_id, content, reply_to_message_id) VALUES ($1, $2, $3, $4) RETURNING *";
@@ -33,18 +33,32 @@ exports.InsertMessageIndividual = async (
   }
 };
 
-exports.checkMessageConversation = async (messageId, loggedInUserId) => {
+exports.checkMessageConversationv2 = async (
+  messageId,
+  loggedInUserId,
+  receivedId,
+) => {
   const query = `
     SELECT *
     FROM messages c
+
+    INNER JOIN conversations as cov ON cov.id = c.conversation_id
+
+    INNER JOIN conversation_members as cm ON cm.conversation_id = cov.id
+      AND cm.user_id=$2 
+      AND cm.user_id = $3
+        
+      
     WHERE c.id = $1
     AND c.sender_id = $2
+
   `;
 
   try {
     const { rows } = await pool.query(query, [
       parseInt(messageId),
       loggedInUserId,
+      receivedId,
     ]);
     if (rows.length > 0) {
       return rows[0]; // ✅ Return conversation if exists
@@ -55,7 +69,41 @@ exports.checkMessageConversation = async (messageId, loggedInUserId) => {
     throw error;
   }
 };
+exports.checkMessageConversation = async (
+  messageId,
+  loggedInUserId,
+  receiverId,
+) => {
+  //
+  const query = `
+    SELECT m.*
+    FROM messages m
+    INNER JOIN conversations c ON c.id = m.conversation_id
 
+    INNER JOIN (
+      -- Get conversations where both users are members
+      SELECT conversation_id
+      FROM conversation_members
+      WHERE user_id IN ($2, $3)
+    ) cm ON cm.conversation_id = c.id
+
+    WHERE m.id = $1
+      AND m.sender_id = $2
+  `;
+
+  try {
+    const { rows } = await pool.query(query, [
+      parseInt(messageId),
+      loggedInUserId,
+      receiverId,
+    ]);
+
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error("Error fetching conversation:", error);
+    throw error;
+  }
+};
 exports.updateMessage = async (messageId, newContent) => {
   const query = `
     UPDATE messages
@@ -232,7 +280,7 @@ exports.searchMessagesv2 = async (messageText, loggedInUserId) => {
 exports.searchMessagesv2 = async (
   messageText,
   loggedInUserId,
-  conversationId
+  conversationId,
 ) => {
   // Split search text into words and filter out empty strings
   const words = messageText
@@ -275,7 +323,7 @@ exports.searchMessagesv2 = async (
 exports.searchMessages = async (
   messageText,
   loggedInUserId,
-  conversationId
+  conversationId,
 ) => {
   // Split search text into words and filter out empty strings
   const words = messageText
@@ -324,7 +372,7 @@ exports.sendMessageNoConvoQuery = async (
   receiverId,
   content,
   messageType = "text",
-  replyToMessageId = null
+  replyToMessageId = null,
 ) => {
   const client = await pool.connect(); // Get a client from the pool
 
@@ -444,7 +492,6 @@ exports.getRecentMessages = async (conversationId, limit = 15) => {
 
       WHERE c.id = $1
         AND c.type = 'individual'
-        AND m.deleted = false
 
       ORDER BY m.created_at DESC
 
@@ -486,7 +533,7 @@ exports.getRecentMessages = async (conversationId, limit = 15) => {
 exports.getMessagesAfter = async (
   conversationId,
   afterMessageId,
-  limit = 10
+  limit = 10,
 ) => {
   //
   const query = `
@@ -570,7 +617,7 @@ exports.getMessagesAfter = async (
 exports.getMessagesBefore = async (
   conversationId,
   beforeMessageId,
-  limit = 5
+  limit = 5,
 ) => {
   const query = `
     WITH target_timestamp AS (
@@ -664,7 +711,7 @@ exports.getMessagesAround = async (
   conversationId,
   messageId,
   beforeCount = 15,
-  afterCount = 15
+  afterCount = 15,
 ) => {
   const query = `
     WITH target_message AS (

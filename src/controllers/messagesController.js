@@ -47,10 +47,12 @@ exports.deleteMessage = async (req, res) => {
     const { messageId } = req.params;
     const loggedInUserId = req.user.userId;
     console.log({ messageId });
+
+    //
     // 🧩 Ensure message exists and belongs to the user
     const deletedMessage = await messagesModel.deleteMessage(
       messageId,
-      loggedInUserId
+      loggedInUserId,
     );
 
     if (!deletedMessage) {
@@ -59,6 +61,16 @@ exports.deleteMessage = async (req, res) => {
       });
     }
 
+    // ✅ Emit real-time event
+    const io = req.app.get("io");
+
+    const conversation_id = deletedMessage?.conversation_id;
+    //
+    io.to(`conversation:${conversation_id}`).emit(
+      "message:delete",
+      deletedMessage,
+    );
+    
     return res.status(200).json({
       message: "Message deleted successfully.",
       data: deletedMessage,
@@ -71,9 +83,7 @@ exports.deleteMessage = async (req, res) => {
 exports.updateConversation = async (req, res) => {
   //
   try {
-    // const { messageId } = req.params;
-
-    const { messageContent, messageId } = req.body;
+    const { messageContent, messageId, receivedId } = req.body;
 
     console.log({ messageId });
     const loggedInUserId = req.user.userId;
@@ -82,7 +92,8 @@ exports.updateConversation = async (req, res) => {
     //
     const checkOwnConvo = await messagesModel.checkMessageConversation(
       messageId,
-      loggedInUserId
+      loggedInUserId,
+      receivedId,
     );
     console.log({ checkOwnConvo });
     if (!checkOwnConvo) {
@@ -94,22 +105,27 @@ exports.updateConversation = async (req, res) => {
     // ✅ 2. Proceed with update
     const updatedMessage = await messagesModel.updateMessage(
       messageId,
-      messageContent
+      messageContent,
     );
 
     if (!updatedMessage) {
       return res.status(404).json({ message: "Message not found." });
     }
+    //
+    const conversation_id = updatedMessage?.conversation_id;
+    // ✅ Emit real-time event
+    const io = req.app.get("io");
+
+    io.to(`conversation:${conversation_id}`).emit(
+      "message:update",
+      updatedMessage,
+    );
 
     // ✅ 3. Success response
     res.status(200).json({
       message: "Message updated successfully.",
       data: updatedMessage,
     });
-    if (checkOwnConvo !== null) {
-      // Update Message.
-    }
-    //
     //
   } catch (error) {
     console.log(error);
@@ -129,7 +145,7 @@ exports.addConversation = async (req, res) => {
     const hasConversation =
       await conversationsModel.checkExistingConversationIndividual(
         loggedInUserId,
-        chatUserId
+        chatUserId,
       );
     console.log({ hasConversation });
     // return res.status(200).json({ data: hasConversation });
@@ -140,7 +156,7 @@ exports.addConversation = async (req, res) => {
       const insertConversation = await conversationsModel.InsertConversation(
         "individual",
         null,
-        loggedInUserId
+        loggedInUserId,
       );
       console.log({ insertConversation });
       if (insertConversation?.id) {
@@ -152,26 +168,26 @@ exports.addConversation = async (req, res) => {
           await conversationsModel.InsertConversationMembers(
             convoId,
             loggedInUserId,
-            "member"
+            "member",
           );
 
         const addConvoChatUserId =
           await conversationsModel.InsertConversationMembers(
             convoId,
             chatUserId,
-            "member"
+            "member",
           );
 
         // if (insertConversationMember?.length > 0) {
         // Add Message.
         //
         console.log({ convoId });
-        
+
         const addMessage = await messagesModel.InsertMessageIndividual(
           convoId,
           loggedInUserId,
           messageContent,
-          replyToMessageId
+          replyToMessageId,
         );
 
         if (addMessage?.id) {
@@ -195,7 +211,7 @@ exports.addConversation = async (req, res) => {
         getConversationId,
         loggedInUserId,
         messageContent,
-        replyToMessageId || null
+        replyToMessageId || null,
       );
 
       if (addMessage?.id) {
@@ -221,7 +237,7 @@ exports.searchUserMessagesv2 = async (req, res) => {
     const userMessages = await messagesModel.searchMessages(
       messageText,
       loggedInUserId,
-      conversationId
+      conversationId,
     );
 
     if (!userMessages) return res.status(200).json({ data: [] });
@@ -234,6 +250,7 @@ exports.searchUserMessagesv2 = async (req, res) => {
   }
 };
 //
+
 exports.searchUserMessages = async (req, res) => {
   try {
     const loggedInUserId = req.user.userId;
@@ -248,7 +265,7 @@ exports.searchUserMessages = async (req, res) => {
     const userMessages = await messagesModel.searchMessages(
       messageText,
       loggedInUserId,
-      conversationId
+      conversationId,
     );
 
     res.status(200).json({ data: userMessages });
@@ -259,7 +276,8 @@ exports.searchUserMessages = async (req, res) => {
 };
 
 //
-exports.sendMessageToUser = async (req, res) => {
+
+exports.sendMessageToUserv2 = async (req, res) => {
   try {
     //
     const senderId = req.user.userId;
@@ -291,7 +309,7 @@ exports.sendMessageToUser = async (req, res) => {
       receiverId,
       content,
       messageType,
-      replyToMessageId
+      replyToMessageId,
     );
 
     // You can emit socket event here for real-time updates
@@ -309,4 +327,105 @@ exports.sendMessageToUser = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+//
+
+exports.sendMessageToUser = async (req, res) => {
+  try {
+    const senderId = req.user.userId;
+    const { receiverId, content, messageType, replyToMessageId } = req.body;
+
+    // Validation
+    if (!receiverId || !content) {
+      return res.status(400).json({
+        error: "receiverId and content are required",
+      });
+    }
+
+    if (senderId === receiverId) {
+      return res.status(400).json({
+        error: "Cannot send message to yourself",
+      });
+    }
+
+    // Check if receiver exists
+    const receiverExists = await userModel.checkUserExists(receiverId);
+    if (!receiverExists) {
+      return res.status(404).json({
+        error: "Receiver not found",
+      });
+    }
+
+    const result = await messagesModel.sendMessageNoConvoQuery(
+      senderId,
+      receiverId,
+      content,
+      messageType,
+      replyToMessageId,
+    );
+
+    // ✅ Emit real-time event
+    const io = req.app.get("io");
+    const userSockets = req.app.get("userSockets");
+
+    // Prepare message data with sender info
+    const messageData = {
+      message: result.message,
+      conversationId: result.conversationId,
+      isNewConversation: result.isNewConversation,
+      sender: {
+        id: senderId,
+        // Add more sender info if needed
+      },
+      receiver: {
+        id: receiverId,
+        // Add more receiverId info if needed
+      },
+    };
+
+    if (result.isNewConversation) {
+      //
+      // Join both users to new conversation room
+      //
+      const senderSockets = userSockets.get(senderId);
+      if (senderSockets) {
+        //
+        console.log({ senderSockets });
+        senderSockets.forEach((socketId) => {
+          const socket = io.sockets.sockets.get(socketId);
+          socket?.join(`conversation:${result.conversationId}`);
+        });
+      }
+
+      const receiverSockets = userSockets.get(receiverId);
+      if (receiverSockets) {
+        receiverSockets.forEach((socketId) => {
+          const socket = io.sockets.sockets.get(socketId);
+          socket?.join(`conversation:${result.conversationId}`);
+        });
+      }
+
+      // Emit to receiver specifically for new conversation
+      io.to(`user:${receiverId}`).emit("message:new", messageData);
+    } else {
+      // Sending messageData (message:new) to conversation:id
+      io.to(`conversation:${result.conversationId}`).emit(
+        "message:new",
+        messageData,
+      );
+    }
+
+    //
+    return res.status(201).json({
+      success: true,
+      data: result.message,
+      conversationId: result.conversationId,
+      isNewConversation: result.isNewConversation,
+    });
+    //
+  } catch (error) {
+    console.error("Error in sendMessage controller:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+//
 //

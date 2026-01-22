@@ -1,26 +1,24 @@
 const express = require("express");
 const cors = require("cors");
-const app = express();
 const cookieParser = require("cookie-parser");
-//
+
+// Initialize Express app
+const app = express();
+
+// Routes
 const usersRoute = require("./route/usersRoutes");
 const conversationsRoute = require("./route/conversationsRoutes");
 const messagesRoute = require("./route/messagesRoutes");
 const recentSearchesRoute = require("./route/recentSearchesRoutes");
 
+// Middleware
 app.use(express.json());
 app.use(cookieParser()); // Otherwise, req.cookies will be undefined.
-// app.use(cors()); // allows all origins
 
-// app.use(
-//   cors({
-//     origin: "http://localhost:5173", // Your React app's URL
-//     credentials: true, // Allow cookies and auth headers
-//   })
-// );
-
+// CORS configuration
 const allowedOrigins = [
   "https://jsocial-frontend-vercel.vercel.app",
+  "https://jsocialbackendproject-deployment.onrender.com",
   "http://localhost:5173",
   "http://localhost:4173",
 ];
@@ -34,9 +32,21 @@ app.use(
   })
 );
 
+// API Routes
 app.use("/api/auth", usersRoute);
 app.use("/api/conversations", conversationsRoute);
 app.use("/api/messages", messagesRoute);
 app.use("/api/recentSearches", recentSearchesRoute);
 
+// Health check route (optional but recommended)
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", message: "Server is running" });
+});
+
+// 404 handler (optional)
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+// Export app (without listening - that happens in server.js)
 module.exports = app;
