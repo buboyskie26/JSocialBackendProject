@@ -29,19 +29,32 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
+// Add this BEFORE the 404 handler
+app.get("/socket.io-test", (req, res) => {
+  const io = req.app.get("io");
+  res.json({
+    socketIO: io ? "initialized" : "not initialized",
+    message: "Socket.IO server status",
+  });
+});
+
+// Health check route (update this)
+app.get("/health", (req, res) => {
+  const io = req.app.get("io");
+  res.status(200).json({
+    status: "ok",
+    message: "Server is running",
+    socketIO: io ? "ready" : "not initialized",
+  });
+});
 // API Routes
 app.use("/api/auth", usersRoute);
 app.use("/api/conversations", conversationsRoute);
 app.use("/api/messages", messagesRoute);
 app.use("/api/recentSearches", recentSearchesRoute);
-
-// Health check route (optional but recommended)
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", message: "Server is running" });
-});
 
 // 404 handler (optional)
 app.use((req, res) => {

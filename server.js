@@ -25,7 +25,6 @@ const server = http.createServer(app);
 // Initialize Socket.io
 const allowedOrigins = [
   "https://jsocial-frontend-vercel.vercel.app",
-  "https://jsocialbackendproject-deployment.onrender.com",
   "http://localhost:5173",
   "http://localhost:4173",
 ];
@@ -37,7 +36,9 @@ const io = new Server(server, {
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
   // Add these options for better compatibility with Render
+  path: "/socket.io", // Explicitly set the path
   transports: ["websocket", "polling"], // Fallback to polling if WebSocket fails
+  allowEIO3: true, // Support older clients
   pingTimeout: 60000,
   pingInterval: 25000,
 });
